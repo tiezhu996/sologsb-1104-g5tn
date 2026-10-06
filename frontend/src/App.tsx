@@ -3,6 +3,7 @@ import AppRoutes from './router'
 
 const navItems = [
   { to: '/joints', label: '榫卯图鉴' },
+  { to: '/proof', label: '拆装校样台' },
   { to: '/furniture', label: '家具反查' },
 ]
 

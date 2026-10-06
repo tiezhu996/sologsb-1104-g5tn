@@ -3,6 +3,7 @@ import type { Diagram, HitArea } from '../types/diagram'
 import type { Furniture } from '../types/furniture'
 import type { JointType } from '../types/jointType'
 import type { Member } from '../types/member'
+import type { ProofDraft, VersionSummary } from '../types/proof'
 import type { DisassemblyStep } from '../types/step'
 
 export class MortiseDatabase extends Dexie {
@@ -11,6 +12,8 @@ export class MortiseDatabase extends Dexie {
   steps!: Table<DisassemblyStep, string>
   diagrams!: Table<Diagram, string>
   furniture!: Table<Furniture, string>
+  proofDrafts!: Table<ProofDraft, string>
+  proofVersions!: Table<VersionSummary, string>
 
   constructor() {
     super('gbmortise-db')
@@ -39,6 +42,12 @@ export class MortiseDatabase extends Dexie {
       await transaction.table<Furniture, string>('furniture').toCollection().modify((furniture) => {
         furniture.schemaRev = 2
       })
+    })
+    // version(3)：拆装校样台的草稿与版本摘要表
+    this.version(3).stores({
+      ...schema,
+      proofDrafts: 'id, jointTypeId, status, updatedAt',
+      proofVersions: 'id, jointTypeId, version, committedAt',
     })
   }
 }
