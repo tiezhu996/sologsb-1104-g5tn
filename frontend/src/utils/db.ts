@@ -3,7 +3,18 @@ import type { Diagram, HitArea } from '../types/diagram'
 import type { Furniture } from '../types/furniture'
 import type { JointType } from '../types/jointType'
 import type { Member } from '../types/member'
+import type { CatalogVersion, ProofDraft } from '../types/proof'
 import type { DisassemblyStep } from '../types/step'
+
+/** 家具说明默认引用的关键构件（出榫榫头），供 v2 数据回填断链校验依据 */
+const seedFurnitureMemberRef: Record<string, string> = {
+  'furniture-quanyi': 'member-bs-tenon',
+  'furniture-tiaoan': 'member-dt-tenon',
+  'furniture-jiazichuang': 'member-zj-frame',
+  'furniture-guanmaoyi': 'member-mt-tenon',
+  'furniture-fangzhuo': 'member-zj-frame',
+  'furniture-guijia': 'member-dt-tenon',
+}
 
 export class MortiseDatabase extends Dexie {
   joints!: Table<JointType, string>
@@ -11,6 +22,8 @@ export class MortiseDatabase extends Dexie {
   steps!: Table<DisassemblyStep, string>
   diagrams!: Table<Diagram, string>
   furniture!: Table<Furniture, string>
+  proofDrafts!: Table<ProofDraft, string>
+  catalogVersions!: Table<CatalogVersion, string>
 
   constructor() {
     super('gbmortise-db')
@@ -40,35 +53,51 @@ export class MortiseDatabase extends Dexie {
         furniture.schemaRev = 2
       })
     })
+    this.version(3).stores({
+      ...schema,
+      proofDrafts: 'id, jointTypeId, status, updatedAt',
+      catalogVersions: 'id, jointTypeId, version, createdAt',
+    }).upgrade(async (transaction) => {
+      await transaction.table<Furniture, string>('furniture').toCollection().modify((furniture) => {
+        if (!furniture.memberId) {
+          furniture.memberId = seedFurnitureMemberRef[furniture.id]
+        }
+      })
+    })
   }
 }
 
-function makeSeedSvg(title: string, memberIds: [string, string, string], labels: [string, string, string]): string {
-  const [firstId, secondId, thirdId] = memberIds
-  const [firstLabel, secondLabel, thirdLabel] = labels
+/** 按构件清单生成带热区的示意图模板：热区 data-member-id 回链现有构件 */
+export function makeTemplateSvg(title: string, memberIds: string[], labels: string[]): string {
+  const [firstId = '', secondId = '', thirdId = ''] = memberIds
+  const [firstLabel = '构件一', secondLabel = '构件二', thirdLabel = '构件三'] = labels
   return `<svg viewBox="0 0 520 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${title}">
   <rect x="8" y="8" width="504" height="284" rx="18" fill="#f7efe3" stroke="#c8a97d" stroke-width="2"/>
   <path d="M20 92 H500 M20 214 H500" stroke="#dfc9a8" stroke-width="1" stroke-dasharray="5 7"/>
   <text x="28" y="42" fill="#5b3a20" font-size="19" font-family="serif" font-weight="700">${title}</text>
   <text x="28" y="66" fill="#8c6b4b" font-size="12" font-family="sans-serif">点击木构件查看尺寸与命名</text>
-  <g data-member-id="${firstId}" style="cursor:pointer">
+  <g data-member-id="${firstId}" data-label="${firstLabel}" style="cursor:pointer">
     <polygon points="40,188 190,188 214,252 18,252" fill="#d89a5b" stroke="#6f4a26" stroke-width="3"/>
     <path d="M65 205 L177 205 M75 220 L188 220 M86 235 L197 235" stroke="#9f6535" stroke-width="3" stroke-linecap="round"/>
     <text x="103" y="278" text-anchor="middle" fill="#4b2d17" font-size="15" font-family="serif">${firstLabel}</text>
   </g>
-  <g data-member-id="${secondId}" style="cursor:pointer">
+  <g data-member-id="${secondId}" data-label="${secondLabel}" style="cursor:pointer">
     <polygon points="196,50 324,50 324,148 196,148" fill="#b77942" stroke="#593619" stroke-width="3"/>
     <rect x="218" y="69" width="84" height="16" rx="4" fill="#f4dfc4"/>
     <rect x="218" y="101" width="84" height="16" rx="4" fill="#f4dfc4"/>
     <text x="260" y="176" text-anchor="middle" fill="#4b2d17" font-size="15" font-family="serif">${secondLabel}</text>
   </g>
-  <g data-member-id="${thirdId}" style="cursor:pointer">
+  <g data-member-id="${thirdId}" data-label="${thirdLabel}" style="cursor:pointer">
     <polygon points="336,116 498,116 498,254 352,254" fill="#c88c55" stroke="#66401f" stroke-width="3"/>
     <path d="M355 137 L472 237 M472 137 L355 237" stroke="#8e542b" stroke-width="5" stroke-linecap="round"/>
     <text x="421" y="278" text-anchor="middle" fill="#4b2d17" font-size="15" font-family="serif">${thirdLabel}</text>
   </g>
   <path d="M220 148 L260 188 L352 188" fill="none" stroke="#3d2814" stroke-width="2" stroke-dasharray="4 4"/>
 </svg>`
+}
+
+function makeSeedSvg(title: string, memberIds: [string, string, string], labels: [string, string, string]): string {
+  return makeTemplateSvg(title, memberIds, labels)
 }
 
 const memberSeeds: Member[] = [
@@ -164,12 +193,12 @@ const jointSeeds: JointType[] = [
 ]
 
 const furnitureSeeds: Furniture[] = [
-  { id: 'furniture-quanyi', jointTypeId: 'joint-shoulder', name: '圈椅', era: '明式', position: '扶手与联帮棍交接处', loadNote: '抱肩弧面分担手臂压力，使圆材连接保持顺纹完整。' },
-  { id: 'furniture-tiaoan', jointTypeId: 'joint-dovetail', name: '条案', era: '明式', position: '翘头与大边端部', loadNote: '燕尾齿肩抵抗案面横向收缩，减少端面开缝。' },
-  { id: 'furniture-jiazichuang', jointTypeId: 'joint-corner', name: '架子床', era: '明末清初', position: '围子转角与立柱交会处', loadNote: '三向咬合控制床架角部扭动，保证立柱垂直。' },
-  { id: 'furniture-guanmaoyi', jointTypeId: 'joint-mitre', name: '官帽椅', era: '明式', position: '搭脑与后腿交接处', loadNote: '格肩封闭可见端面，暗榫承受靠背反复拉力。' },
-  { id: 'furniture-fangzhuo', jointTypeId: 'joint-corner', name: '方桌', era: '清式', position: '桌面边框三材交汇处', loadNote: '粽角结构把桌面荷载分配到相邻两向构件。' },
-  { id: 'furniture-guijia', jointTypeId: 'joint-dovetail', name: '柜架', era: '明清', position: '柜体侧板与横枨端部', loadNote: '燕尾榫限制横枨外拔，兼顾客体板面伸缩。' },
+  { id: 'furniture-quanyi', jointTypeId: 'joint-shoulder', name: '圈椅', era: '明式', position: '扶手与联帮棍交接处', loadNote: '抱肩弧面分担手臂压力，使圆材连接保持顺纹完整。', memberId: 'member-bs-tenon' },
+  { id: 'furniture-tiaoan', jointTypeId: 'joint-dovetail', name: '条案', era: '明式', position: '翘头与大边端部', loadNote: '燕尾齿肩抵抗案面横向收缩，减少端面开缝。', memberId: 'member-dt-tenon' },
+  { id: 'furniture-jiazichuang', jointTypeId: 'joint-corner', name: '架子床', era: '明末清初', position: '围子转角与立柱交会处', loadNote: '三向咬合控制床架角部扭动，保证立柱垂直。', memberId: 'member-zj-frame' },
+  { id: 'furniture-guanmaoyi', jointTypeId: 'joint-mitre', name: '官帽椅', era: '明式', position: '搭脑与后腿交接处', loadNote: '格肩封闭可见端面，暗榫承受靠背反复拉力。', memberId: 'member-mt-tenon' },
+  { id: 'furniture-fangzhuo', jointTypeId: 'joint-corner', name: '方桌', era: '清式', position: '桌面边框三材交汇处', loadNote: '粽角结构把桌面荷载分配到相邻两向构件。', memberId: 'member-zj-frame' },
+  { id: 'furniture-guijia', jointTypeId: 'joint-dovetail', name: '柜架', era: '明清', position: '柜体侧板与横枨端部', loadNote: '燕尾榫限制横枨外拔，兼顾客体板面伸缩。', memberId: 'member-dt-tenon' },
 ]
 
 export const db = new MortiseDatabase()
